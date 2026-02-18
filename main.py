@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Optional
-from PIL import Image
+import exifread
 from io import BytesIO
 
 from fastapi import FastAPI, HTTPException, Request
@@ -89,37 +89,19 @@ def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
         return False, None
 
 def check_photo_metadata(photo_bytes: bytes) -> dict:
-    """
-    Проверяет метаданные фото (EXIF) на наличие признаков манипуляции
-    """
-    result = {
-        "is_suspicious": False,
-        "reasons": []
-    }
-    
+    result = {"is_suspicious": False, "reasons": []}
     try:
-        img = Image.open(BytesIO(photo_bytes))
-        
-        # Проверяем наличие EXIF данных
-        if hasattr(img, '_getexif') and img._getexif():
-            exif = img._getexif()
-            
-            # Проверяем дату съемки (тег 36867 = DateTimeOriginal)
-            if 36867 in exif:
-                photo_date = exif[36867]
-                result["photo_date"] = photo_date
-                
-                # Здесь можно добавить проверку, что фото сделано недавно
-                # Для этого нужно парсить дату и сравнивать с текущей
+        tags = exifread.process_file(BytesIO(photo_bytes), details=False)
+        # Проверяем наличие EXIF-тега с датой съемки
+        if 'EXIF DateTimeOriginal' in tags:
+            photo_date = str(tags['EXIF DateTimeOriginal'])
+            result["photo_date"] = photo_date
+            # Здесь можно добавить проверку на свежесть фото
         else:
-            # Отсутствие EXIF может быть признаком обработки фото
             result["reasons"].append("no_exif_data")
             result["is_suspicious"] = True
-            
     except Exception as e:
-        logger.error(f"Ошибка при анализе фото: {e}")
         result["reasons"].append("analysis_error")
-    
     return result
 
 @app.post("/upload-photo")
