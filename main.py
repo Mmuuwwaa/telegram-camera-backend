@@ -60,9 +60,38 @@ def send_to_google_sheet(user_name: str, user_id: int, send_time: str, on_time: 
 
 # --- ФУНКЦИЯ ВАЛИДАЦИИ (оставляем как есть) ---
 def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
-    # ... (ваш существующий код, без изменений)
-    # Если у вас ещё не обновлённая версия, можно оставить старую, но лучше использовать ту, что я давал ранее.
-    pass
+    try:
+        parsed_data = parse_qs(init_data, keep_blank_values=True)
+        data = {key: value[0] for key, value in parsed_data.items()}
+        
+        hash_value = data.pop('hash', None)
+        if not hash_value:
+            return False, None  # ← важно: всегда возвращаем кортеж
+
+        sorted_items = sorted(data.items())
+        data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted_items)
+
+        secret_key = hmac.new(
+            b"WebAppData", 
+            BOT_TOKEN.encode(), 
+            hashlib.sha256
+        ).digest()
+
+        computed_hash = hmac.new(
+            secret_key, 
+            data_check_string.encode(), 
+            hashlib.sha256
+        ).hexdigest()
+
+        user_data = None
+        if 'user' in data:
+            user_data = json.loads(unquote(data['user']))
+
+        return computed_hash == hash_value, user_data  # всегда кортеж
+
+    except Exception as e:
+        logger.error(f"Validation error: {e}")
+        return False, None  # ← критически важно!
 
 # --- ОБРАБОТЧИК POST /upload-photo ---
 @app.post("/upload-photo")
