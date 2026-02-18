@@ -1,6 +1,6 @@
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.6
-aiogram==3.3.0
-python-dotenv==1.0.0
+fastapi==0.115.11
+uvicorn==0.34.0
+python-multipart==0.0.20
+aiogram==3.18.0
+python-dotenv==1.0.1
 exifread==3.0.0
