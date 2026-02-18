@@ -37,52 +37,49 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 bot = Bot(token=BOT_TOKEN)
 
-def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
-    """
-    Проверяет подлинность данных инициализации от Telegram.
-    Возвращает (успех, данные пользователя)
-    """
+import hashlib
+import hmac
+import json
+from urllib.parse import parse_qs, unquote
+
+def validate_init_data(init_data: str) -> tuple[bool, dict | None]:
     try:
-        # Парсим init_data
-        data_pairs = {}
-        for item in init_data.split('&'):
-            if '=' in item:
-                key, value = item.split('=', 1)
-                data_pairs[key] = value
+        # Парсим строку запроса в словарь
+        parsed_data = parse_qs(init_data, keep_blank_values=True)
+        # Избавляемся от списков (parse_qs возвращает значения как списки)
+        data = {key: value[0] for key, value in parsed_data.items()}
         
-        # Извлекаем хеш
-        hash_value = data_pairs.pop('hash', None)
+        hash_value = data.pop('hash', None)
         if not hash_value:
             return False, None
-        
-        # Сортируем данные для проверки
-        sorted_data = '\n'.join(f"{k}={v}" for k, v in sorted(data_pairs.items()))
-        
-        # Создаем секретный ключ из токена бота
+
+        # Сортируем ключи и формируем строку для проверки
+        sorted_items = sorted(data.items())
+        data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted_items)
+
+        # Создаём секретный ключ из токена бота
         secret_key = hmac.new(
             b"WebAppData", 
             BOT_TOKEN.encode(), 
             hashlib.sha256
         ).digest()
-        
-        # Вычисляем ожидаемый хеш
+
+        # Вычисляем хеш
         computed_hash = hmac.new(
             secret_key, 
-            sorted_data.encode(), 
+            data_check_string.encode(), 
             hashlib.sha256
         ).hexdigest()
-        
-        # Проверяем хеш
-        is_valid = computed_hash == hash_value
-        
-        # Парсим данные пользователя, если они есть
+
+        # Извлекаем данные пользователя, если есть
         user_data = None
-        if 'user' in data_pairs:
-            import urllib.parse
-            user_json = urllib.parse.unquote(data_pairs['user'])
-            user_data = json.loads(user_json)
-        
-        return is_valid, user_data
+        if 'user' in data:
+            user_data = json.loads(unquote(data['user']))
+
+        return computed_hash == hash_value, user_data
+    except Exception as e:
+        print(f"Validation error: {e}")  # или logger.error
+        return False, None
         
     except Exception as e:
         logger.error(f"Ошибка валидации init_data: {e}")
