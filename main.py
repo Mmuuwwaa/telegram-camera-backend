@@ -5,6 +5,7 @@ import json
 import logging
 import os  # уже есть
 import requests  # ← НОВОЕ
+from urllib.parse import parse_qs, unquote
 from datetime import datetime
 from typing import Optional
 from io import BytesIO
