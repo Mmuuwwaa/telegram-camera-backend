@@ -4,7 +4,6 @@ import hmac
 import json
 import logging
 import os
-import requests
 import pytz
 from urllib.parse import parse_qs, unquote
 from datetime import datetime
@@ -21,10 +20,9 @@ load_dotenv()
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))  # ID группы для отчётов
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 TIMEZONE = pytz.timezone("Asia/Yekaterinburg")
 
-# --- ЛОГИРОВАНИЕ ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -39,9 +37,7 @@ app.add_middleware(
 
 bot = Bot(token=BOT_TOKEN)
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ОПРЕДЕЛЕНИЕ ЭТАПА ---
 def get_stage_and_on_time(current_time: datetime) -> tuple[Optional[str], int]:
-    """Возвращает (stage, on_time) с учётом времени Екатеринбурга."""
     hour = current_time.hour
     minute = current_time.minute
     if hour == 9 and 0 <= minute <= 15:
@@ -51,9 +47,8 @@ def get_stage_and_on_time(current_time: datetime) -> tuple[Optional[str], int]:
     elif (hour == 21 and minute >= 30) or (hour == 22 and minute == 0):
         return "clean", 1
     else:
-        return None, 0
+        return None, 0  # None означает, что время вне окна
 
-# --- ВАЛИДАЦИЯ INIT DATA (без изменений) ---
 def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
     try:
         parsed_data = parse_qs(init_data, keep_blank_values=True)
@@ -81,7 +76,6 @@ def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
         logger.error(f"Validation error: {e}")
         return False, None
 
-# --- ОБРАБОТЧИК POST /upload-photo ---
 @app.post("/upload-photo")
 async def upload_photo(request: Request):
     try:
@@ -99,7 +93,6 @@ async def upload_photo(request: Request):
         if not user_data:
             raise HTTPException(status_code=400, detail="No user data")
 
-        # Декодируем фото
         try:
             photo_data = photo_base64.split(',')[1]
             photo_bytes = base64.b64decode(photo_data)
@@ -111,8 +104,8 @@ async def upload_photo(request: Request):
         current_time = datetime.now(TIMEZONE)
         stage, on_time = get_stage_and_on_time(current_time)
 
-        if stage is None:
-            stage = "unknown"  # для фото вне временных окон
+        # Если этап не определён, всё равно отправляем, но в служебном сообщении будет unknown
+        stage_display = stage if stage is not None else "unknown"
 
         # Данные пользователя
         user_id = user_data.get("id")
@@ -121,7 +114,6 @@ async def upload_photo(request: Request):
         last_name = user_data.get("last_name", "")
         full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
 
-        # Форматируем время для отображения
         time_str = current_time.strftime("%H:%M:%S")
 
         # Подпись для фото в группе
@@ -130,12 +122,11 @@ async def upload_photo(request: Request):
             f"👤 {full_name}\n"
             f"🆔 {user_id}\n"
             f"⏰ {time_str} (Екатеринбург)\n"
-            f"📌 Этап: {stage}\n"
+            f"📌 Этап: {stage_display}\n"
             f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
             f"📸 Mini App"
         )
 
-        # 1. Отправляем фото в группу
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
             photo=BufferedInputFile(photo_bytes, filename=f"photo_{user_id}.jpg"),
@@ -143,14 +134,14 @@ async def upload_photo(request: Request):
         )
         file_id = sent_message.photo[-1].file_id
 
-        # 2. Отправляем служебное сообщение (будет удалено ботом)
+        # Служебное сообщение для бота
         await bot.send_message(
             chat_id=CHANNEL_ID,
-            text=f"#miniapp_report: {user_id}, {stage}, {on_time}, {file_id}"
+            text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}"
         )
-        logger.info(f"✅ Служебное сообщение отправлено для user {user_id}, stage {stage}")
+        logger.info(f"✅ Служебное сообщение отправлено для user {user_id}, stage {stage_display}")
 
-        # 3. Уведомление пользователю
+        # Уведомление пользователю
         try:
             if on_time:
                 await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
@@ -167,7 +158,6 @@ async def upload_photo(request: Request):
         logger.error(f"Ошибка в upload_photo: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# --- HEALTH CHECK ---
 @app.get("/health")
 async def health():
     now = datetime.now(TIMEZONE)
