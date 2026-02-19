@@ -110,26 +110,37 @@ async def upload_photo(request: Request):
         else:
             stage, on_time = get_stage_and_on_time(current_time)
 
-        stage_display = stage if stage else "unknown"
+        # Определяем этап
+if stage_from_client and stage_from_client in ["start", "prep", "clean"]:
+    stage = stage_from_client
+    _, on_time = get_stage_and_on_time(current_time)
+elif task_id:
+    stage = None  # для заданий этап не нужен
+    on_time = 0
+else:
+    stage, on_time = get_stage_and_on_time(current_time)
 
-        user_id = user_data.get("id")
-        username = user_data.get("username", "")
-        first_name = user_data.get("first_name", "")
-        last_name = user_data.get("last_name", "")
-        full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
+# Теперь формируем отображаемое название этапа
+stage_display = stage if stage else "unknown"
 
-        time_str = current_time.strftime("%H:%M:%S")
+user_id = user_data.get("id")
+username = user_data.get("username", "")
+first_name = user_data.get("first_name", "")
+last_name = user_data.get("last_name", "")
+full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
 
-        # Подпись для фото в группе
-        group_caption = (
-            f"📸 Новое фото от сотрудника\n"
-            f"👤 {full_name}\n"
-            f"🆔 {user_id}\n"
-            f"⏰ {time_str} (Екатеринбург)\n"
-            f"📌 Этап: {stage_display}\n"
-            f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
-            f"📸 Mini App"
-        )
+time_str = current_time.strftime("%H:%M:%S")
+
+# Подпись для фото в группе
+group_caption = (
+    f"📸 Новое фото от сотрудника\n"
+    f"👤 {full_name}\n"
+    f"🆔 {user_id}\n"
+    f"⏰ {time_str} (Екатеринбург)\n"
+    f"📌 Этап: {stage_display}\n"
+    f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
+    f"📸 Mini App"
+)
 
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
