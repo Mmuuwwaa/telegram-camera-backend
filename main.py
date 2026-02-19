@@ -152,7 +152,6 @@ else:
         f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
         f"📸 Mini App"
     )
-)
 
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
