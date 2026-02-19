@@ -135,10 +135,7 @@ async def upload_photo(request: Request):
         file_id = sent_message.photo[-1].file_id
 
         # Служебное сообщение для бота
-        await bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}"
-        )
+       
         logger.info(f"✅ Служебное сообщение отправлено для user {user_id}, stage {stage_display}")
 
         # Уведомление пользователю
