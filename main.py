@@ -98,73 +98,48 @@ def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
 @app.post("/upload-photo")
 async def upload_photo(request: Request):
     try:
-        data = await request.json()
-        if not all(k in data for k in ["initData", "photo", "timestamp"]):
-            raise HTTPException(status_code=400, detail="Missing required fields")
+        # ... (вся предыдущая логика до отправки админу)
 
-        is_valid, user_data = validate_init_data(data["initData"])
-        if not is_valid:
-            raise HTTPException(status_code=403, detail="Invalid init data")
-        if not user_data:
-            raise HTTPException(status_code=400, detail="No user data")
-
-        # Декодируем фото
-        photo_base64 = data["photo"].split(',')[1]
-        photo_bytes = base64.b64decode(photo_base64)
-
-        # Определяем время отправки и проверяем, вовремя ли
-        current_time = datetime.now()
-        hour, minute = current_time.hour, current_time.minute
-        is_on_time = 1 if (hour == 9 and 0 <= minute <= 15) else 0
-
-        # Здесь можно добавить анализ на подозрительность (если используется EXIF)
-        is_suspicious = 0  # пока всегда 0, можно доработать позже
-
-        # Отправляем фото админу
-        user_id = user_data.get("id", "unknown")
-        username = user_data.get("username", "unknown")
-        first_name = user_data.get("first_name", "")
-        last_name = user_data.get("last_name", "")
-        full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
-
-        caption = (
-            f"📸 Новое фото от сотрудника (Mini App)\n"
-            f"👤 {full_name}\n"
-            f"🆔 {user_id}\n"
-            f"⏰ {current_time.strftime('%H:%M:%S')}\n"
-            f"✅ {'Вовремя' if is_on_time else 'Опоздал'}\n"
-        )
-
-        await bot.send_photo(
+        # Отправляем фото админу (как и раньше)
+        sent_message = await bot.send_photo(
             chat_id=ADMIN_ID,
             photo=BufferedInputFile(photo_bytes, filename=f"photo_{user_id}.jpg"),
             caption=caption
         )
+        file_id = sent_message.photo[-1].file_id  # можно сохранить, если пригодится
 
-        # --- ОТПРАВКА В GOOGLE SHEETS (НОВОЕ) ---
+        # --- НОВЫЙ БЛОК: отправка в группу ---
+        try:
+            group_caption = (
+                f"📸 Новое фото от сотрудника\n"
+                f"👤 {full_name}\n"
+                f"🆔 {user_id}\n"
+                f"⏰ {current_time.strftime('%H:%M:%S')}\n"
+                f"✅ {'Вовремя' if is_on_time else 'Опоздал'}\n"
+                f"📸 Mini App"
+            )
+            await bot.send_photo(
+                chat_id=CHANNEL_ID,  # используем переменную окружения
+                photo=BufferedInputFile(photo_bytes, filename=f"photo_{user_id}.jpg"),
+                caption=group_caption
+            )
+            logger.info(f"✅ Фото отправлено в группу {CHANNEL_ID}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки в группу: {e}")
+
+        # --- Отправка в Google Sheets (уже есть) ---
         send_time_str = current_time.strftime("%H:%M:%S")
         send_to_google_sheet(
             user_name=full_name,
             user_id=user_id,
             send_time=send_time_str,
             on_time=is_on_time,
-            is_suspicious=is_suspicious,
-            from_mini_app=1  # это фото точно из Mini App
+            is_suspicious=0,  # или ваша логика
+            from_mini_app=1,
+            photo_link=""  # пока пусто, но можно добавить ссылку на сообщение позже
         )
 
-        # Отправляем уведомление пользователю
-        try:
-            if is_on_time:
-                await bot.send_message(chat_id=user_id, text="✅ Ваше фото успешно отправлено и принято вовремя!")
-            else:
-                await bot.send_message(chat_id=user_id, text="⚠️ Фото отправлено, но вы опоздали. В следующий раз до 9:15!")
-        except Exception as e:
-            logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
-
-        return {"status": "success"}
-
-    except HTTPException:
-        raise
+        # ... (остальной код: уведомление пользователю и return)
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
