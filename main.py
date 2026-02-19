@@ -107,51 +107,43 @@ async def upload_photo(request: Request):
         if stage_from_client and stage_from_client in ["start", "prep", "clean"]:
             stage = stage_from_client
             _, on_time = get_stage_and_on_time(current_time)
+        elif task_id:
+            stage = None  # для заданий этап не нужен
+            on_time = 0
         else:
             stage, on_time = get_stage_and_on_time(current_time)
 
-        # Определяем этап
-if stage_from_client and stage_from_client in ["start", "prep", "clean"]:
-    stage = stage_from_client
-    _, on_time = get_stage_and_on_time(current_time)
-elif task_id:
-    stage = None  # для заданий этап не нужен
-    on_time = 0
-else:
-    stage, on_time = get_stage_and_on_time(current_time)
+        stage_display = stage if stage else "unknown"
 
-# Теперь формируем отображаемое название этапа
-stage_display = stage if stage else "unknown"
+        user_id = user_data.get("id")
+        username = user_data.get("username", "")
+        first_name = user_data.get("first_name", "")
+        last_name = user_data.get("last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
 
-user_id = user_data.get("id")
-username = user_data.get("username", "")
-first_name = user_data.get("first_name", "")
-last_name = user_data.get("last_name", "")
-full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
+        time_str = current_time.strftime("%H:%M:%S")
 
-time_str = current_time.strftime("%H:%M:%S")
-
-# Подпись для фото в группе
-if task_id:
-    group_caption = (
-        f"📸 Фото для задания\n"
-        f"👤 {full_name}\n"
-        f"🆔 {user_id}\n"
-        f"⏰ {time_str} (Екатеринбург)\n"
-        f"📌 Задание\n"
-        f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
-        f"📸 Mini App"
-    )
-else:
-    group_caption = (
-        f"📸 Новое фото от сотрудника\n"
-        f"👤 {full_name}\n"
-        f"🆔 {user_id}\n"
-        f"⏰ {time_str} (Екатеринбург)\n"
-        f"📌 Этап: {stage_display}\n"
-        f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
-        f"📸 Mini App"
-    )
+        # Подпись для фото в группе
+        if task_id:
+            group_caption = (
+                f"📸 Фото для задания\n"
+                f"👤 {full_name}\n"
+                f"🆔 {user_id}\n"
+                f"⏰ {time_str} (Екатеринбург)\n"
+                f"📌 Задание\n"
+                f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
+                f"📸 Mini App"
+            )
+        else:
+            group_caption = (
+                f"📸 Новое фото от сотрудника\n"
+                f"👤 {full_name}\n"
+                f"🆔 {user_id}\n"
+                f"⏰ {time_str} (Екатеринбург)\n"
+                f"📌 Этап: {stage_display}\n"
+                f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
+                f"📸 Mini App"
+            )
 
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
@@ -160,19 +152,22 @@ else:
         )
         file_id = sent_message.photo[-1].file_id
 
-        # Служебное сообщение для бота (этапы)
+        # Служебное сообщение для бота (если нужно, раскомментируйте)
+        # await bot.send_message(chat_id=CHANNEL_ID, text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}")
+        # if task_id:
+        #     await bot.send_message(chat_id=CHANNEL_ID, text=f"#task_report: {user_id}, {task_id}, {stage_display}, {on_time}, {file_id}")
 
         # Уведомление пользователю
         try:
-    if task_id:
-        await bot.send_message(chat_id=user_id, text="✅ Фото для задания отправлено!")
-    else:
-        if on_time:
-            await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
-        else:
-            await bot.send_message(chat_id=user_id, text="⚠️ Фото принято, но вне временного окна.")
-except Exception as e:
-    logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
+            if task_id:
+                await bot.send_message(chat_id=user_id, text="✅ Фото для задания отправлено!")
+            else:
+                if on_time:
+                    await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
+                else:
+                    await bot.send_message(chat_id=user_id, text="⚠️ Фото принято, но вне временного окна.")
+        except Exception as e:
+            logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
 
         return {"status": "success"}
 
