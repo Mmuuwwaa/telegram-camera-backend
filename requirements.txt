@@ -5,3 +5,4 @@ aiogram==3.18.0
 python-dotenv==1.0.1
 exifread==3.0.0
 requests==2.31.0
+pytz==2025.2
