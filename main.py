@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import requests
+import pytz
 from urllib.parse import parse_qs, unquote
 from datetime import datetime
 from typing import Optional
@@ -20,8 +21,8 @@ load_dotenv()
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")  # можно удалить, если не нужно
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))  # ID группы для отчётов
+TIMEZONE = pytz.timezone("Asia/Yekaterinburg")
 
 # --- ЛОГИРОВАНИЕ ---
 logging.basicConfig(level=logging.INFO)
@@ -38,25 +39,21 @@ app.add_middleware(
 
 bot = Bot(token=BOT_TOKEN)
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ОПРЕДЕЛЕНИЕ ЭТАПА ПО ВРЕМЕНИ ---
+# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ОПРЕДЕЛЕНИЕ ЭТАПА ---
 def get_stage_and_on_time(current_time: datetime) -> tuple[Optional[str], int]:
-    """Возвращает (stage, on_time) где stage: 'start','prep','clean' или None, on_time: 1/0."""
+    """Возвращает (stage, on_time) с учётом времени Екатеринбурга."""
     hour = current_time.hour
     minute = current_time.minute
-    # Этап 1: начало смены 9:00-9:15
     if hour == 9 and 0 <= minute <= 15:
         return "start", 1
-    # Этап 2: заготовки 10:00-10:15
     elif hour == 10 and 0 <= minute <= 15:
         return "prep", 1
-    # Этап 3: уборка 21:30-22:00
-    elif hour == 21 and minute >= 30 or hour == 22 and minute == 0:
+    elif (hour == 21 and minute >= 30) or (hour == 22 and minute == 0):
         return "clean", 1
     else:
-        # Если время вне интервалов, этап не определён, on_time=0
         return None, 0
 
-# --- ФУНКЦИЯ ВАЛИДАЦИИ INIT DATA (без изменений) ---
+# --- ВАЛИДАЦИЯ INIT DATA (без изменений) ---
 def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
     try:
         parsed_data = parse_qs(init_data, keep_blank_values=True)
@@ -110,19 +107,12 @@ async def upload_photo(request: Request):
             logger.error(f"Ошибка декодирования фото: {e}")
             raise HTTPException(status_code=400, detail="Invalid photo data")
 
-        # Текущее время (можно использовать UTC, но для этапов лучше локальное, если бэкенд в UTC+0)
-        # Предположим, сервер в UTC. Для корректной работы этапов нужно либо передавать временную зону,
-        # либо настроить сервер на Екатеринбург. Пока используем UTC, но позже можно заменить на локальное.
-        current_time = datetime.now()  # в реальности нужно заменить на datetime.now(TIMEZONE)
-        # Определяем этап и вовремя ли
+        # Текущее время в Екатеринбурге
+        current_time = datetime.now(TIMEZONE)
         stage, on_time = get_stage_and_on_time(current_time)
 
-        # Если время вне интервалов, всё равно принимаем фото, но stage=None. В таком случае,
-        # нужно будет попросить пользователя выбрать этап (через бота). Но сейчас Mini App не поддерживает выбор,
-        # поэтому пока сохраняем как "unknown".
         if stage is None:
-            stage = "unknown"
-            # on_time уже 0
+            stage = "unknown"  # для фото вне временных окон
 
         # Данные пользователя
         user_id = user_data.get("id")
@@ -131,33 +121,21 @@ async def upload_photo(request: Request):
         last_name = user_data.get("last_name", "")
         full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
 
-        # Подпись для админа
-        admin_caption = (
-            f"📸 Новое фото от сотрудника (Mini App)\n"
-            f"👤 Имя: {full_name}\n"
-            f"🆔 ID: {user_id}\n"
-            f"⏰ Время: {current_time.strftime('%H:%M:%S')} UTC\n"
-            f"📌 Этап: {stage}\n"
-            f"✅ {'Вовремя' if on_time else 'Опоздал/вне окна'}\n"
-        )
+        # Форматируем время для отображения
+        time_str = current_time.strftime("%H:%M:%S")
 
-        # 1. Отправляем фото админу
-        await bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=BufferedInputFile(photo_bytes, filename=f"photo_{user_id}.jpg"),
-            caption=admin_caption
-        )
-
-        # 2. Отправляем копию в группу
+        # Подпись для фото в группе
         group_caption = (
             f"📸 Новое фото от сотрудника\n"
             f"👤 {full_name}\n"
             f"🆔 {user_id}\n"
-            f"⏰ {current_time.strftime('%H:%M:%S')} UTC\n"
+            f"⏰ {time_str} (Екатеринбург)\n"
             f"📌 Этап: {stage}\n"
-            f"✅ {'Вовремя' if on_time else 'Опоздал/вне окна'}\n"
+            f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
             f"📸 Mini App"
         )
+
+        # 1. Отправляем фото в группу
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
             photo=BufferedInputFile(photo_bytes, filename=f"photo_{user_id}.jpg"),
@@ -165,23 +143,19 @@ async def upload_photo(request: Request):
         )
         file_id = sent_message.photo[-1].file_id
 
-        # 3. **ВАЖНО**: отправляем служебное сообщение для бота-статистики
+        # 2. Отправляем служебное сообщение (будет удалено ботом)
         await bot.send_message(
             chat_id=CHANNEL_ID,
             text=f"#miniapp_report: {user_id}, {stage}, {on_time}, {file_id}"
         )
         logger.info(f"✅ Служебное сообщение отправлено для user {user_id}, stage {stage}")
 
-        # 4. Отправка в Google Sheets (опционально, можно убрать)
-        send_time_str = current_time.strftime("%H:%M:%S")
-        # send_to_google_sheet(...)  # закомментируйте, если не нужно
-
-        # 5. Уведомление пользователю
+        # 3. Уведомление пользователю
         try:
             if on_time:
-                await bot.send_message(chat_id=user_id, text="✅ Ваше фото успешно отправлено и принято вовремя!")
+                await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
             else:
-                await bot.send_message(chat_id=user_id, text="⚠️ Фото отправлено, но вне временного окна. В следующий раз старайтесь укладываться в интервалы!")
+                await bot.send_message(chat_id=user_id, text="⚠️ Фото принято, но вне временного окна.")
         except Exception as e:
             logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
 
@@ -196,4 +170,5 @@ async def upload_photo(request: Request):
 # --- HEALTH CHECK ---
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    now = datetime.now(TIMEZONE)
+    return {"status": "healthy", "timestamp": now.isoformat()}
