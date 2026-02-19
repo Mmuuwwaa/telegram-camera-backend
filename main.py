@@ -132,14 +132,26 @@ full_name = f"{first_name} {last_name}".strip() or username or f"User {user_id}"
 time_str = current_time.strftime("%H:%M:%S")
 
 # Подпись для фото в группе
-group_caption = (
-    f"📸 Новое фото от сотрудника\n"
-    f"👤 {full_name}\n"
-    f"🆔 {user_id}\n"
-    f"⏰ {time_str} (Екатеринбург)\n"
-    f"📌 Этап: {stage_display}\n"
-    f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
-    f"📸 Mini App"
+if task_id:
+    group_caption = (
+        f"📸 Фото для задания\n"
+        f"👤 {full_name}\n"
+        f"🆔 {user_id}\n"
+        f"⏰ {time_str} (Екатеринбург)\n"
+        f"📌 Задание\n"
+        f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
+        f"📸 Mini App"
+    )
+else:
+    group_caption = (
+        f"📸 Новое фото от сотрудника\n"
+        f"👤 {full_name}\n"
+        f"🆔 {user_id}\n"
+        f"⏰ {time_str} (Екатеринбург)\n"
+        f"📌 Этап: {stage_display}\n"
+        f"✅ {'Вовремя' if on_time else 'Вне окна'}\n"
+        f"📸 Mini App"
+    )
 )
 
         sent_message = await bot.send_photo(
@@ -153,12 +165,15 @@ group_caption = (
 
         # Уведомление пользователю
         try:
-            if on_time:
-                await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
-            else:
-                await bot.send_message(chat_id=user_id, text="⚠️ Фото принято, но вне временного окна.")
-        except Exception as e:
-            logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
+    if task_id:
+        await bot.send_message(chat_id=user_id, text="✅ Фото для задания отправлено!")
+    else:
+        if on_time:
+            await bot.send_message(chat_id=user_id, text="✅ Ваше фото принято вовремя!")
+        else:
+            await bot.send_message(chat_id=user_id, text="⚠️ Фото принято, но вне временного окна.")
+except Exception as e:
+    logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
 
         return {"status": "success"}
 
