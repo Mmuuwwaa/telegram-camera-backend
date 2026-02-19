@@ -153,11 +153,15 @@ async def upload_photo(request: Request):
         file_id = sent_message.photo[-1].file_id
 
         # Служебное сообщение для бота (если нужно, раскомментируйте)
-        # await bot.send_message(chat_id=CHANNEL_ID, text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}")
-        # if task_id:
-        #     await bot.send_message(chat_id=CHANNEL_ID, text=f"#task_report: {user_id}, {task_id}, {stage_display}, {on_time}, {file_id}")
-
-        # Уведомление пользователю
+        await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}"
+        )
+        if task_id:
+            await bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=f"#task_report: {user_id}, {task_id}, {stage_display}, {on_time}, {file_id}"
+            )
         try:
             if task_id:
                 await bot.send_message(chat_id=user_id, text="✅ Фото для задания отправлено!")
