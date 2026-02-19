@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- НАСТРОЙКИ ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
@@ -47,7 +46,7 @@ def get_stage_and_on_time(current_time: datetime) -> tuple[Optional[str], int]:
     elif (hour == 21 and minute >= 30) or (hour == 22 and minute == 0):
         return "clean", 1
     else:
-        return None, 0  # None означает, что время вне окна
+        return None, 0
 
 def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
     try:
@@ -83,6 +82,8 @@ async def upload_photo(request: Request):
         init_data = body.get("initData")
         photo_base64 = body.get("photo")
         timestamp = body.get("timestamp")
+        stage_from_client = body.get("stage")
+        task_id = body.get("task_id")  # может быть None или строка
 
         if not all([init_data, photo_base64, timestamp]):
             raise HTTPException(status_code=400, detail="Missing required fields")
@@ -100,14 +101,17 @@ async def upload_photo(request: Request):
             logger.error(f"Ошибка декодирования фото: {e}")
             raise HTTPException(status_code=400, detail="Invalid photo data")
 
-        # Текущее время в Екатеринбурге
         current_time = datetime.now(TIMEZONE)
-        stage, on_time = get_stage_and_on_time(current_time)
 
-        # Если этап не определён, всё равно отправляем, но в служебном сообщении будет unknown
-        stage_display = stage if stage is not None else "unknown"
+        # Определяем этап
+        if stage_from_client and stage_from_client in ["start", "prep", "clean"]:
+            stage = stage_from_client
+            _, on_time = get_stage_and_on_time(current_time)
+        else:
+            stage, on_time = get_stage_and_on_time(current_time)
 
-        # Данные пользователя
+        stage_display = stage if stage else "unknown"
+
         user_id = user_data.get("id")
         username = user_data.get("username", "")
         first_name = user_data.get("first_name", "")
@@ -134,9 +138,19 @@ async def upload_photo(request: Request):
         )
         file_id = sent_message.photo[-1].file_id
 
-        # Служебное сообщение для бота
-       
-        logger.info(f"✅ Служебное сообщение отправлено для user {user_id}, stage {stage_display}")
+        # Служебное сообщение для бота (этапы)
+        await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}"
+        )
+
+        # Если есть task_id, отправляем служебное сообщение для задания
+        if task_id:
+            await bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=f"#task_report: {user_id}, {task_id}, {file_id}"
+            )
+            logger.info(f"✅ Служебное сообщение для задания {task_id} отправлено")
 
         # Уведомление пользователю
         try:
