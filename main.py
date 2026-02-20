@@ -20,6 +20,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+BOT_ID = 8170295940  # ID бота (из токена)
 TIMEZONE = pytz.timezone("Asia/Yekaterinburg")
 
 logging.basicConfig(level=logging.INFO)
@@ -151,17 +152,14 @@ async def upload_photo(request: Request):
             caption=group_caption
         )
         file_id = sent_message.photo[-1].file_id
-
-        # Служебное сообщение для бота (если нужно, раскомментируйте)
-        await bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=f"#miniapp_report: {user_id}, {stage_display}, {on_time}, {file_id}"
-        )
+        # Отправляем служебное сообщение боту, если это задание
         if task_id:
             await bot.send_message(
-                chat_id=CHANNEL_ID,
+                chat_id=BOT_ID,
                 text=f"#task_report: {user_id}, {task_id}, {stage_display}, {on_time}, {file_id}"
             )
+            logger.info(f"✅ Служебное сообщение о задании отправлено боту {BOT_ID}")
+
         try:
             if task_id:
                 await bot.send_message(chat_id=user_id, text="✅ Фото для задания отправлено!")
