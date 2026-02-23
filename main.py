@@ -93,7 +93,7 @@ async def upload_photo(request: Request):
 
         # Отправляем служебное сообщение боту для обновления статуса задания
         await bot.send_message(
-            chat_id=CHANNEL_ID,
+            chat_id=-1003772065180,
             text=f"#task_done: {user_id}, {task_id}, {file_id}"
         )
 
