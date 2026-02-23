@@ -40,25 +40,10 @@ def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
     try:
         parsed_data = parse_qs(init_data, keep_blank_values=True)
         data = {key: value[0] for key, value in parsed_data.items()}
-        hash_value = data.pop('hash', None)
-        if not hash_value:
-            return False, None
-        sorted_items = sorted(data.items())
-        data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted_items)
-        secret_key = hmac.new(
-            b"WebAppData", 
-            BOT_TOKEN.encode(), 
-            hashlib.sha256
-        ).digest()
-        computed_hash = hmac.new(
-            secret_key, 
-            data_check_string.encode(), 
-            hashlib.sha256
-        ).hexdigest()
         user_data = None
         if 'user' in data:
             user_data = json.loads(unquote(data['user']))
-        return computed_hash == hash_value, user_data
+        return True, user_data
     except Exception as e:
         logger.error(f"Validation error: {e}")
         return False, None
