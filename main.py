@@ -48,6 +48,20 @@ def validate_init_data(init_data: str) -> tuple[bool, Optional[dict]]:
         logger.error(f"Validation error: {e}")
         return False, None
 
+# Хранилище текстов заданий (task_id -> текст)
+task_texts = {}
+
+@app.post("/task_created")
+async def task_created(request: Request):
+    data = await request.json()
+    task_id = data.get("task_id")
+    text = data.get("text")
+    if not task_id or not text:
+        raise HTTPException(status_code=400, detail="Missing task_id or text")
+    task_texts[task_id] = text
+    logger.info(f"Сохранён текст задания {task_id}: {text}")
+    return {"status": "ok"}
+    
 @app.post("/upload-photo")
 async def upload_photo(request: Request):
     try:
@@ -83,7 +97,8 @@ async def upload_photo(request: Request):
         time_str = current_time.strftime("%H:%M:%S")
 
         # Отправляем фото в группу с подписью о выполнении задания
-        caption = f"📸 Фото для задания #{task_id}\n👤 {full_name}\n⏰ {time_str}"
+        task_text = task_texts.get(str(task_id), f"Задание #{task_id}")
+        caption = f"📸 Фото для задания\n📋 {task_text}\n👤 {full_name}\n⏰ {time_str}"
         sent_message = await bot.send_photo(
             chat_id=CHANNEL_ID,
             photo=BufferedInputFile(photo_bytes, filename=f"task_{task_id}_{user_id}.jpg"),
