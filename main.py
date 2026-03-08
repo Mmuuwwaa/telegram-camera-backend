@@ -58,7 +58,7 @@ async def task_created(request: Request):
     text = data.get("text")
     if not task_id or not text:
         raise HTTPException(status_code=400, detail="Missing task_id or text")
-    task_texts[task_id] = text
+    task_texts[str(task_id)] = text  # ключ как строка
     logger.info(f"Сохранён текст задания {task_id}: {text}")
     return {"status": "ok"}
     
